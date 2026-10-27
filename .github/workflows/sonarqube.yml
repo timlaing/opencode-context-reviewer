@@ -65,6 +65,8 @@ jobs:
             -Dsonar.tests=test
             -Dsonar.exclusions=**/node_modules/**,**/coverage/**,**/*.d.ts
             -Dsonar.scm.exclusions.disabled=true
+            -Dsonar.javascript.exclusions=**/node_modules/**,**/bower_components/**
+            -Dsonar.typescript.exclusions=**/node_modules/**,**/bower_components/**
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
             -Dsonar.qualitygate.wait=true
 
@@ -80,6 +82,8 @@ jobs:
             -Dsonar.tests=test
             -Dsonar.exclusions=**/node_modules/**,**/coverage/**,**/*.d.ts
             -Dsonar.scm.exclusions.disabled=true
+            -Dsonar.javascript.exclusions=**/node_modules/**,**/bower_components/**
+            -Dsonar.typescript.exclusions=**/node_modules/**,**/bower_components/**
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
             -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
             -Dsonar.pullrequest.branch=${{ github.head_ref }}
