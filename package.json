@@ -1,0 +1,56 @@
+{
+  "name": "@timlaing/opencode-context-reviewer",
+  "version": "0.1.0",
+  "description": "OpenCode V2 server plugin that redacts outgoing model context, reduces oversized transcripts, and fails closed on unsafe payloads",
+  "type": "module",
+  "exports": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "API-VERIFICATION.md",
+    "policy.example.json",
+    "src",
+    "test",
+    "tsconfig.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/timlaing/opencode-context-reviewer.git"
+  },
+  "homepage": "https://github.com/timlaing/opencode-context-reviewer#readme",
+  "bugs": {
+    "url": "https://github.com/timlaing/opencode-context-reviewer/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "redaction",
+    "secrets",
+    "context",
+    "token-budget",
+    "llm",
+    "guardrails"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test --experimental-strip-types test/*.test.ts",
+    "test:coverage": "npm run build && mkdir -p coverage && node --test --experimental-strip-types --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info test/*.test.ts",
+    "publish:gh-packages": "node scripts/publish-github-packages.mjs"
+  },
+  "dependencies": {
+    "@opencode/ai": "2.2.0",
+    "@opencode/plugin": "2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "license": "MIT"
+}

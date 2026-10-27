@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: OpenCode core issues
+    url: https://github.com/anomalyco/opencode/issues
+    about: OpenCode application bugs, session handling and provider transport issues belong in the OpenCode repository.
+  - name: Security policy
+    url: https://github.com/timlaing/opencode-context-reviewer/security/advisories/new
+    about: Report vulnerabilities privately. Do not open a public issue for security-sensitive details.

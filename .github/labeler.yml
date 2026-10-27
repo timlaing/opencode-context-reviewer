@@ -1,0 +1,15 @@
+"area: plugin":
+  - changed-files:
+      - any-glob-to-any-file: ['src/**', 'tsconfig.json', 'policy.example.json']
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: ['**/*.md', 'LICENSE']
+tests:
+  - changed-files:
+      - any-glob-to-any-file: ['test/**']
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ['.github/**', 'scripts/**']
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file: ['package.json', 'package-lock.json', '.github/dependabot.yml']

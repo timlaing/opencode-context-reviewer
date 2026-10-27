@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+*.tgz
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Test and coverage artifacts
+coverage/
+*.log
+.scannerwork/
+.sonar-coverage/
+
+# OpenCode session data and local agent memory (never committed)
+.opencode/
+
+# Local environment and live configuration
+.env
+.env.local
+/opencode.json
+/opencode.jsonc
+
+# Plan documents — never commit these
+docs/plans/

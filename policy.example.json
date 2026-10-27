@@ -1,0 +1,10 @@
+{
+  "thresholdTokens": 24000,
+  "targetTokens": 16000,
+  "recentExchanges": 4,
+  "summaryChars": 4000,
+  "maxPayloadBytes": 8000000,
+  "literals": ["replace-with-your-private-project-name"],
+  "redactEmails": true,
+  "redactIPv4": false
+}
