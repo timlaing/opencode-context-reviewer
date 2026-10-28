@@ -89,6 +89,8 @@ The `SonarQube` workflow runs alongside `CI` on main pushes and pull requests. I
 
 Project: `timlaing_opencode-context-reviewer`, organization: `timlaing`, service: `https://sonarcloud.io`. Create or import the public Sonar project with that key, supply its CI token as the `SONAR_TOKEN` Actions secret, then set `SONAR_ENABLED=true`. Disable Sonar automatic analysis when using this CI workflow. Repository visibility alone does not create or enable a Sonar project.
 
+Issue exclusions for the generated `dist/` output (ten `javascript:` rules scoped to `dist/**`) are configured in the SonarCloud project settings under Analysis Scope → Issue Exclusions → "Ignore Issues on Multiple Criteria", because SonarCloud does not apply the scanner-side `sonar.issue.ignore.multicriteria` property. Recreate them there if the Sonar project is ever rebuilt; the exact rule list is documented in `sonar-project.properties`.
+
 ## Releases
 
 Releases are event-driven — publishing never happens on pushes to main:
