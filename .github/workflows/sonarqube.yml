@@ -61,9 +61,9 @@ jobs:
             -Dsonar.projectKey=timlaing_opencode-context-reviewer
             -Dsonar.organization=timlaing
             -Dsonar.projectName=opencode-context-reviewer
-            -Dsonar.sources=dist,scripts
+            -Dsonar.sources=dist
             -Dsonar.tests=test
-            -Dsonar.exclusions=**/node_modules/**,**/coverage/**,**/*.d.ts
+            -Dsonar.exclusions=**/node_modules/**,**/coverage/**,**/*.d.ts,**/scripts/**
             -Dsonar.scm.exclusions.disabled=true
             -Dsonar.javascript.exclusions=**/node_modules/**,**/bower_components/**
             -Dsonar.typescript.exclusions=**/node_modules/**,**/bower_components/**
@@ -79,9 +79,9 @@ jobs:
             -Dsonar.projectKey=timlaing_opencode-context-reviewer
             -Dsonar.organization=timlaing
             -Dsonar.projectName=opencode-context-reviewer
-            -Dsonar.sources=dist,scripts
+            -Dsonar.sources=dist
             -Dsonar.tests=test
-            -Dsonar.exclusions=**/node_modules/**,**/coverage/**,**/*.d.ts
+            -Dsonar.exclusions=**/node_modules/**,**/coverage/**,**/*.d.ts,**/scripts/**
             -Dsonar.scm.exclusions.disabled=true
             -Dsonar.javascript.exclusions=**/node_modules/**,**/bower_components/**
             -Dsonar.typescript.exclusions=**/node_modules/**,**/bower_components/**
