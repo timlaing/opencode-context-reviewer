@@ -143,6 +143,7 @@ function latestReleaseTag() {
     cwd: repoRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
+    env: cleanEnv({}),
   })
   const versionTag = out
     .split('\n')
@@ -179,7 +180,7 @@ function readConfig() {
   const dryRun = !process.argv.includes('--publish')
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? process.env.NODE_AUTH_TOKEN
   const committed = JSON.parse(
-    execFileSync('git', ['show', 'HEAD:package.json'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    execFileSync('git', ['show', 'HEAD:package.json'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: cleanEnv({}) })
   )
   const releaseTag = process.env.RELEASE_TAG
   if (releaseTag && version !== releaseTag.replace(/^v/, '')) {
@@ -249,6 +250,7 @@ function setupRetryMirror(dir, name, taggedVersion, userconfig, token, dryRun) {
   execFileSync('git', ['worktree', 'add', '--detach', worktree, `v${taggedVersion}`], {
     cwd: repoRoot,
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: cleanEnv({}),
   })
   // The tag commits the placeholder version (releases never commit the
   // stamped version); stamp the tag tree exactly like the publish job's
@@ -429,7 +431,7 @@ async function main() {
     // Clear the tag worktree's git registration after its directory is gone
     // (best-effort: no registration to prune when the stamped path ran).
     try {
-      execFileSync('git', ['worktree', 'prune'], { cwd: repoRoot, stdio: 'ignore' })
+      execFileSync('git', ['worktree', 'prune'], { cwd: repoRoot, stdio: 'ignore', env: cleanEnv({}) })
     } catch {
       // nothing to prune
     }
