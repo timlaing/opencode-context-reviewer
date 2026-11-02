@@ -171,19 +171,13 @@ function onNpmjs(name, version) {
   }
 }
 
-async function main() {
+/**
+ * @returns {{ name: string, version: string, dryRun: boolean, token: string, committed: any, releaseTag: string }}
+ */
+function readConfig() {
   const { name, version } = readPkg()
   const dryRun = !process.argv.includes('--publish')
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? process.env.NODE_AUTH_TOKEN
-
-  // The publish job stamps the released version (from the release tag) into
-  // the working package.json before running this script; outside that job
-  // the working version equals the committed placeholder. So a working
-  // version different from the committed one means "the publish job just
-  // stamped the version to mirror", and equality means "no stamp" — handled
-  // below by the release-tag fallback. The job also exports RELEASE_TAG,
-  // which is authoritative when present (it removes the equality
-  // ambiguity), and the stamped version must match it.
   const committed = JSON.parse(
     execFileSync('git', ['show', 'HEAD:package.json'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
   )
@@ -191,23 +185,179 @@ async function main() {
   if (releaseTag && version !== releaseTag.replace(/^v/, '')) {
     throw new Error(`working package.json version ${version} does not match release tag ${releaseTag}; refusing to mirror`)
   }
+  return { name, version, dryRun, token, committed, releaseTag }
+}
 
-  // A real publish needs a token; an empty/absent one would otherwise fail
-  // deep inside npm with an opaque auth error.
+/**
+ * @param {boolean} dryRun
+ * @param {string} token
+ */
+function validateToken(dryRun, token) {
   if (!dryRun && !token) {
     throw new Error(
       'no GitHub token in environment (set GITHUB_TOKEN, GH_TOKEN or NODE_AUTH_TOKEN with packages:write)'
     )
   }
+}
+
+/**
+ * @param {string} name
+ * @param {string} version
+ * @param {string} userconfig
+ * @param {string} token
+ * @param {boolean} dryRun
+ * @returns {boolean} true if already published and we should exit
+ */
+function checkAlreadyPublished(name, version, userconfig, token, dryRun) {
+  if (token && alreadyPublished(name, version, userconfig, token)) {
+    console.log(`[publish-github-packages] ${version} already on ${GH_PACKAGES_REGISTRY}; nothing to mirror`)
+    return true
+  }
+  if (!token && !dryRun) {
+    console.log('[publish-github-packages] dry run without a token: skipping duplicate-version check')
+  }
+  return false
+}
+
+/**
+ * @param {string} dir
+ * @param {string} name
+ * @param {string} taggedVersion
+ * @param {string} userconfig
+ * @param {string} token
+ * @param {boolean} dryRun
+ * @returns {{ publishCwd: string, target: string } | null}
+ */
+function setupRetryMirror(dir, name, taggedVersion, userconfig, token, dryRun) {
+  if (!token) {
+    console.log(`[publish-github-packages] dry run without a token: skipping mirror-retry check for ${taggedVersion}`)
+    return null
+  }
+  if (alreadyPublished(name, taggedVersion, userconfig, token)) {
+    console.log(`[publish-github-packages] ${taggedVersion} already on ${GH_PACKAGES_REGISTRY}; nothing to mirror`)
+    return null
+  }
+  // npmjs is the source of truth: never mirror a version that was not
+  // canonically published (this also refuses a tag whose npmjs publish
+  // failed, and any tag pushed by hand).
+  if (!onNpmjs(name, taggedVersion)) {
+    console.log(`[publish-github-packages] ${taggedVersion} is not on npmjs (the canonical registry); refusing to mirror it`)
+    return null
+  }
+  console.log(`[publish-github-packages] ${taggedVersion} missing from ${GH_PACKAGES_REGISTRY}; retrying mirror from tag ${tag}`)
+  const worktree = join(dir, 'worktree')
+  execFileSync('git', ['worktree', 'add', '--detach', worktree, `v${taggedVersion}`], {
+    cwd: repoRoot,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  // The tag commits the placeholder version (releases never commit the
+  // stamped version); stamp the tag tree exactly like the publish job's
+  // stamp step does for the canonical publish so the retried artifact is
+  // byte-identical in identity, not a stray placeholder version.
+  const pkgPath = join(worktree, 'package.json')
+  const worktreePkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+  worktreePkg.version = taggedVersion
+  writeFileSync(pkgPath, `${JSON.stringify(worktreePkg, null, 2)}\n`)
+  return { publishCwd: worktree, target: taggedVersion }
+}
+
+/**
+ * @param {string} name
+ * @param {string} target
+ * @param {string} dryRun
+ * @returns {string[]}
+ */
+function buildPublishArgs(target, dryRun, userconfig) {
+  return [
+    'publish',
+    '--registry',
+    GH_PACKAGES_REGISTRY,
+    '--access',
+    'public',
+    // No lifecycle code runs while publishing (the root package defines
+    // none; this keeps third-party scripts out of the credential-bearing
+    // publish step in CI).
+    '--ignore-scripts',
+    '--userconfig',
+    userconfig,
+    ...(dryRun ? ['--dry-run'] : []),
+  ]
+}
+
+/**
+ * @param {import('node:child_process').ChildProcess} child
+ * @param {RegExp} conflictRe
+ * @returns {Promise<{ code: number, sawConflict: boolean }>}
+ */
+async function runNpmPublish(child, conflictRe) {
+  const rollingCap = 64 * 1024
+  let rolling = ''
+  let sawConflict = false
+  const attach = (source, sink, observe) => {
+    source.on('data', (chunk) => {
+      if (observe) observe(chunk)
+      if (!sink.write(chunk)) {
+        source.pause()
+        sink.once('drain', () => source.resume())
+      }
+    })
+  }
+  attach(child.stdout, process.stdout)
+  attach(child.stderr, process.stderr, (chunk) => {
+    // Check the marker against the combined text *before* truncating:
+    // a marker straddling the window edge (prefix at the end of the
+    // retained tail, suffix early in this chunk) must be matched while
+    // both halves are still in hand, even when this chunk alone
+    // exceeds the cap.
+    const combined = rolling + String(chunk)
+    if (!sawConflict && conflictRe.test(combined)) sawConflict = true
+    rolling = combined.slice(-rollingCap)
+  })
+  return new Promise((resolve, reject) => {
+    child.on('error', reject)
+    child.on('close', (code) => resolve({ code, sawConflict }))
+  })
+}
+
+/**
+ * @param {string} name
+ * @param {string} target
+ * @param {number} code
+ * @param {boolean} sawConflict
+ * @param {boolean} dryRun
+ */
+function handlePublishResult(name, target, code, sawConflict, dryRun) {
+  if (code !== 0) {
+    // A serialized duplicate run whose first mirror publish is still
+    // inside the registry's consistency window gets a version conflict
+    // here. That conflict (and only that conflict — the exact markers
+    // npm emits for a version clash, nothing else) proves the version is
+    // already present, so treat it as mirrored; every other failure
+    // throws with npm's diagnostics already streamed into the log. Dry
+    // runs publish nothing, so no conflict can occur and none is
+    // tolerated.
+    if (!dryRun && sawConflict) {
+      console.log(
+        `[publish-github-packages] ${name}@${target} already present on ${GH_PACKAGES_REGISTRY} (registry refused the duplicate publish); nothing to mirror`
+      )
+      return
+    }
+    throw new Error(`npm publish for ${name}@${target} failed with exit code ${code}`)
+  }
+  console.log(`[publish-github-packages] ${name}@${target} -> ${GH_PACKAGES_REGISTRY} ok`)
+}
+
+async function main() {
+  const { name, version, dryRun, token, committed, releaseTag } = readConfig()
+  validateToken(dryRun, token)
 
   // Isolated userconfig so a local scope mapping cannot interfere and the
   // token never touches the working tree.
   const dir = mkdtempSync(join(tmpdir(), 'ocr-ghpkg-'))
   const userconfig = join(dir, '.npmrc')
-  // publishCwd is where `npm publish` packs from: the CI checkout on the
-  // stamped path, a detached worktree of the release tag on the retry path.
   let publishCwd = repoRoot
   let target = version
+
   try {
     // Full nerf-dart key: `//npm.pkg.github.com/:_authToken` — the colon
     // before the setting name is required as much as the trailing slash.
@@ -226,11 +376,8 @@ async function main() {
       // already-mirrored version means a previous run of this job succeeded
       // — registry versions are immutable, so the mirror invariant holds;
       // skip with a log so re-running the job is safe.
-      if (token && alreadyPublished(name, version, userconfig, token)) {
-        console.log(`[publish-github-packages] ${version} already on ${GH_PACKAGES_REGISTRY}; nothing to mirror`)
+      if (checkAlreadyPublished(name, version, userconfig, token, dryRun)) {
         return
-      } else if (!token) {
-        console.log('[publish-github-packages] dry run without a token: skipping duplicate-version check')
       }
     } else {
       // No stamp: not the publish job (or a run from a checkout without the
@@ -245,53 +392,15 @@ async function main() {
         return
       }
       const taggedVersion = tag.slice(1)
-      if (!token) {
-        console.log(`[publish-github-packages] dry run without a token: skipping mirror-retry check for ${taggedVersion}`)
+      const retryResult = setupRetryMirror(dir, name, taggedVersion, userconfig, token, dryRun)
+      if (!retryResult) {
         return
       }
-      if (alreadyPublished(name, taggedVersion, userconfig, token)) {
-        console.log(`[publish-github-packages] ${taggedVersion} already on ${GH_PACKAGES_REGISTRY}; nothing to mirror`)
-        return
-      }
-      // npmjs is the source of truth: never mirror a version that was not
-      // canonically published (this also refuses a tag whose npmjs publish
-      // failed, and any tag pushed by hand).
-      if (!onNpmjs(name, taggedVersion)) {
-        console.log(`[publish-github-packages] ${taggedVersion} is not on npmjs (the canonical registry); refusing to mirror it`)
-        return
-      }
-      console.log(`[publish-github-packages] ${taggedVersion} missing from ${GH_PACKAGES_REGISTRY}; retrying mirror from tag ${tag}`)
-      const worktree = join(dir, 'worktree')
-      execFileSync('git', ['worktree', 'add', '--detach', worktree, tag], {
-        cwd: repoRoot,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
-      // The tag commits the placeholder version (releases never commit the
-      // stamped version); stamp the tag tree exactly like the publish job's
-      // stamp step does for the canonical publish so the retried artifact is
-      // byte-identical in identity, not a stray placeholder version.
-      const pkgPath = join(worktree, 'package.json')
-      const worktreePkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-      worktreePkg.version = taggedVersion
-      writeFileSync(pkgPath, `${JSON.stringify(worktreePkg, null, 2)}\n`)
-      publishCwd = worktree
-      target = taggedVersion
+      publishCwd = retryResult.publishCwd
+      target = retryResult.target
     }
 
-    const args = [
-      'publish',
-      '--registry',
-      GH_PACKAGES_REGISTRY,
-      '--access',
-      'public',
-      // No lifecycle code runs while publishing (the root package defines
-      // none; this keeps third-party scripts out of the credential-bearing
-      // publish step in CI).
-      '--ignore-scripts',
-      '--userconfig',
-      userconfig,
-      ...(dryRun ? ['--dry-run'] : []),
-    ]
+    const args = buildPublishArgs(target, dryRun, userconfig)
 
     console.log(
       `[publish-github-packages] ${name}@${target} -> ${GH_PACKAGES_REGISTRY}${dryRun ? ' (dry run; pass --publish to publish)' : ''}`
@@ -307,59 +416,14 @@ async function main() {
     // has contained a marker it stays seen regardless of how much trailing
     // output arrives afterwards, and npm's single-line conflict message is
     // far smaller than the window, so it cannot slip through either edge.
-    const status = await new Promise((resolve, reject) => {
-      const child = spawn('npm', args, {
-        cwd: publishCwd,
-        env: cleanEnv({ NODE_AUTH_TOKEN: token }),
-        stdio: ['inherit', 'pipe', 'pipe'],
-      })
-      const conflictRe = /E409|already staged|cannot publish over/i
-      const rollingCap = 64 * 1024
-      let rolling = ''
-      let sawConflict = false
-      const attach = (source, sink, observe) => {
-        source.on('data', (chunk) => {
-          if (observe) observe(chunk)
-          if (!sink.write(chunk)) {
-            source.pause()
-            sink.once('drain', () => source.resume())
-          }
-        })
-      }
-      attach(child.stdout, process.stdout)
-      attach(child.stderr, process.stderr, (chunk) => {
-        // Check the marker against the combined text *before* truncating:
-        // a marker straddling the window edge (prefix at the end of the
-        // retained tail, suffix early in this chunk) must be matched while
-        // both halves are still in hand, even when this chunk alone
-        // exceeds the cap.
-        const combined = rolling + String(chunk)
-        if (!sawConflict && conflictRe.test(combined)) sawConflict = true
-        rolling = combined.slice(-rollingCap)
-      })
-      child.on('error', reject)
-      child.on('close', (code) => resolve({ code, sawConflict }))
+    const conflictRe = /E409|already staged|cannot publish over/i
+    const child = spawn('npm', args, {
+      cwd: publishCwd,
+      env: cleanEnv({ NODE_AUTH_TOKEN: token }),
+      stdio: ['inherit', 'pipe', 'pipe'],
     })
-
-    if (status.code !== 0) {
-      // A serialized duplicate run whose first mirror publish is still
-      // inside the registry's consistency window gets a version conflict
-      // here. That conflict (and only that conflict — the exact markers
-      // npm emits for a version clash, nothing else) proves the version is
-      // already present, so treat it as mirrored; every other failure
-      // throws with npm's diagnostics already streamed into the log. Dry
-      // runs publish nothing, so no conflict can occur and none is
-      // tolerated.
-      if (!dryRun && status.sawConflict) {
-        console.log(
-          `[publish-github-packages] ${name}@${target} already present on ${GH_PACKAGES_REGISTRY} (registry refused the duplicate publish); nothing to mirror`
-        )
-        return
-      }
-      throw new Error(`npm publish for ${name}@${target} failed with exit code ${status.code}`)
-    }
-
-    console.log(`[publish-github-packages] ${name}@${target} -> ${GH_PACKAGES_REGISTRY} ok`)
+    const status = await runNpmPublish(child, conflictRe)
+    handlePublishResult(name, target, status.code, status.sawConflict, dryRun)
   } finally {
     rmSync(dir, { recursive: true, force: true })
     // Clear the tag worktree's git registration after its directory is gone
