@@ -40,44 +40,6 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
-// Environment variables that are safe to pass through to child processes.
-// Explicitly allowlisted to avoid PATH manipulation (Sonar S4036).
-const SAFE_ENV_VARS = [
-  'HOME',
-  'USER',
-  'USERNAME',
-  'SHELL',
-  'TERM',
-  'TMPDIR',
-  'TEMP',
-  'TMP',
-  'NODE_AUTH_TOKEN',
-  'GITHUB_TOKEN',
-  'GH_TOKEN',
-  'NPM_CONFIG_USERCONFIG',
-  'npm_config_userconfig',
-  'CI',
-  'GITHUB_ACTIONS',
-  'GITHUB_REPOSITORY',
-  'GITHUB_SHA',
-  'GITHUB_REF',
-]
-
-/**
- * Creates a clean environment object for child processes.
- * Only includes explicitly allowlisted variables to prevent PATH manipulation.
- * @param {Record<string, string>} [extra] Additional variables to include
- * @returns {Record<string, string>}
- */
-function cleanEnv(extra = {}) {
-  const env = {}
-  for (const key of SAFE_ENV_VARS) {
-    const value = process.env[key]
-    if (value !== undefined) env[key] = value
-  }
-  return { ...env, ...extra }
-}
-
 // The npmrc auth key must be the full nerf-dart of the registry URL — leading
 // slashes, trailing slash AND the colon before the setting name, yielding
 // `//npm.pkg.github.com/:_authToken`. Dropping the slash or the colon makes
@@ -115,7 +77,7 @@ function alreadyPublished(name, version, userconfig, token) {
     execFileSync(
       'npm',
       ['view', `${name}@${version}`, 'version', '--registry', GH_PACKAGES_REGISTRY, '--userconfig', userconfig],
-      { stdio: ['ignore', 'pipe', 'pipe'], env: cleanEnv({ NODE_AUTH_TOKEN: token }) }
+      { stdio: ['ignore', 'pipe', 'pipe'], env: { NODE_AUTH_TOKEN: token } }
     )
     return true
   } catch (error) {
@@ -143,7 +105,6 @@ function latestReleaseTag() {
     cwd: repoRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
-    env: cleanEnv({}),
   })
   const versionTag = out
     .split('\n')
@@ -164,7 +125,6 @@ function onNpmjs(name, version) {
     execFileSync('npm', ['view', `${name}@${version}`, 'version', '--registry', NPMJS_REGISTRY], {
       cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: cleanEnv({}),
     })
     return true
   } catch {
@@ -180,7 +140,7 @@ function readConfig() {
   const dryRun = !process.argv.includes('--publish')
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? process.env.NODE_AUTH_TOKEN
   const committed = JSON.parse(
-    execFileSync('git', ['show', 'HEAD:package.json'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: cleanEnv({}) })
+    execFileSync('git', ['show', 'HEAD:package.json'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
   )
   const releaseTag = process.env.RELEASE_TAG
   if (releaseTag && version !== releaseTag.replace(/^v/, '')) {
@@ -250,7 +210,6 @@ function setupRetryMirror(dir, name, taggedVersion, userconfig, token, dryRun) {
   execFileSync('git', ['worktree', 'add', '--detach', worktree, `v${taggedVersion}`], {
     cwd: repoRoot,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: cleanEnv({}),
   })
   // The tag commits the placeholder version (releases never commit the
   // stamped version); stamp the tag tree exactly like the publish job's
@@ -264,9 +223,9 @@ function setupRetryMirror(dir, name, taggedVersion, userconfig, token, dryRun) {
 }
 
 /**
- * @param {string} name
  * @param {string} target
- * @param {string} dryRun
+ * @param {boolean} dryRun
+ * @param {string} userconfig
  * @returns {string[]}
  */
 function buildPublishArgs(target, dryRun, userconfig) {
@@ -421,7 +380,7 @@ async function main() {
     const conflictRe = /E409|already staged|cannot publish over/i
     const child = spawn('npm', args, {
       cwd: publishCwd,
-      env: cleanEnv({ NODE_AUTH_TOKEN: token }),
+      env: { NODE_AUTH_TOKEN: token },
       stdio: ['inherit', 'pipe', 'pipe'],
     })
     const status = await runNpmPublish(child, conflictRe)
@@ -431,7 +390,7 @@ async function main() {
     // Clear the tag worktree's git registration after its directory is gone
     // (best-effort: no registration to prune when the stamped path ran).
     try {
-      execFileSync('git', ['worktree', 'prune'], { cwd: repoRoot, stdio: 'ignore', env: cleanEnv({}) })
+      execFileSync('git', ['worktree', 'prune'], { cwd: repoRoot, stdio: 'ignore' })
     } catch {
       // nothing to prune
     }
