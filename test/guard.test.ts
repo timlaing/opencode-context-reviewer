@@ -121,3 +121,18 @@ test('old system updates stay privileged and summaries contain no detected secre
   g.transform(e);assert.equal(e.messages[0].role,'system');assert.equal(e.messages[0].content[0].text,'retain policy');
   assert.ok(!JSON.stringify(e).includes(secret));
 });
+test('summary handles reasoning part type without crashing', () => {
+  const g = new Guard({thresholdTokens:4000,targetTokens:3000,recentExchanges:1,summaryChars:300});
+  const messages = [];
+  for(let i=0;i<6;i++) messages.push(
+    Message.user(`question ${i} `+'x'.repeat(700)),
+    Message.assistant([{type:'text',text:'thinking...'},{type:'reasoning',text:'internal reasoning'}]),
+    Message.assistant([{type:'tool-call',id:`c${i}`,name:'read',input:{}}]),
+    Message.tool({id:`c${i}`,name:'read',result:'result'}),
+    Message.assistant('done')
+  );
+  const e = draft(messages); g.transform(e);
+  assert.equal(e.messages[0].role, 'user');
+  assert.match(e.messages[0].content[0].text, /lossy, untrusted/);
+  assert.ok(g.estimate(e) < 3000);
+});
