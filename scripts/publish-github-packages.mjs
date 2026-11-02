@@ -40,6 +40,44 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
+// Environment variables that are safe to pass through to child processes.
+// Explicitly allowlisted to avoid PATH manipulation (Sonar S4036).
+const SAFE_ENV_VARS = [
+  'HOME',
+  'USER',
+  'USERNAME',
+  'SHELL',
+  'TERM',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'NODE_AUTH_TOKEN',
+  'GITHUB_TOKEN',
+  'GH_TOKEN',
+  'NPM_CONFIG_USERCONFIG',
+  'npm_config_userconfig',
+  'CI',
+  'GITHUB_ACTIONS',
+  'GITHUB_REPOSITORY',
+  'GITHUB_SHA',
+  'GITHUB_REF',
+]
+
+/**
+ * Creates a clean environment object for child processes.
+ * Only includes explicitly allowlisted variables to prevent PATH manipulation.
+ * @param {Record<string, string>} [extra] Additional variables to include
+ * @returns {Record<string, string>}
+ */
+function cleanEnv(extra = {}) {
+  const env = {}
+  for (const key of SAFE_ENV_VARS) {
+    const value = process.env[key]
+    if (value !== undefined) env[key] = value
+  }
+  return { ...env, ...extra }
+}
+
 // The npmrc auth key must be the full nerf-dart of the registry URL — leading
 // slashes, trailing slash AND the colon before the setting name, yielding
 // `//npm.pkg.github.com/:_authToken`. Dropping the slash or the colon makes
@@ -77,7 +115,7 @@ function alreadyPublished(name, version, userconfig, token) {
     execFileSync(
       'npm',
       ['view', `${name}@${version}`, 'version', '--registry', GH_PACKAGES_REGISTRY, '--userconfig', userconfig],
-      { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_AUTH_TOKEN: token } }
+      { stdio: ['ignore', 'pipe', 'pipe'], env: cleanEnv({ NODE_AUTH_TOKEN: token }) }
     )
     return true
   } catch (error) {
@@ -125,7 +163,7 @@ function onNpmjs(name, version) {
     execFileSync('npm', ['view', `${name}@${version}`, 'version', '--registry', NPMJS_REGISTRY], {
       cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env: cleanEnv({}),
     })
     return true
   } catch {
@@ -272,7 +310,7 @@ async function main() {
     const status = await new Promise((resolve, reject) => {
       const child = spawn('npm', args, {
         cwd: publishCwd,
-        env: { ...process.env, NODE_AUTH_TOKEN: token },
+        env: cleanEnv({ NODE_AUTH_TOKEN: token }),
         stdio: ['inherit', 'pipe', 'pipe'],
       })
       const conflictRe = /E409|already staged|cannot publish over/i
