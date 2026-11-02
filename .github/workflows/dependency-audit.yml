@@ -39,4 +39,4 @@ jobs:
       # Scope to runtime dependencies: only `@opencode/plugin` and
       # `@opencode/ai` ship to users, so the runtime tree is the release
       # surface this check guards.
-      - run: npm audit --omit=dev
+      - run: npm audit --omit=dev --audit-level=high
