@@ -1,8 +1,8 @@
-# API verification — 2026-10-27
+# API verification — 2026-11-02
 
 ## Published package
 
-`npm view @opencode/plugin version` returned **2.2.0**. Downloaded the published tarball and installed that exact SDK; package-lock pins the dependency graph. The implementation compiles against its declarations without an invented hook shim.
+`npm view @opencode/plugin version` returned **2.2.3**. Downloaded the published tarball and installed that exact SDK; package-lock pins the dependency graph. The implementation compiles against its declarations without an invented hook shim.
 
 Relevant installed files:
 
@@ -11,7 +11,7 @@ Relevant installed files:
 - `node_modules/@opencode/ai/dist/schema/messages.d.ts`: message `content` includes tool-call and tool-result parts. Both identify the relationship with **`id` and `name`**, not assumed V1/AI-SDK `toolCallId` fields. Messages use SDK constructors to retain their runtime class shape.
 - `node_modules/@opencode/plugin/dist/promise/adapter.js`: session hook callbacks are wrapped in `Effect.promise(() => Promise.resolve(callback(event)))`. Rejections are defects, not a typed cancellation API; there is no local catch that turns them into successful hook completion.
 
-Tarball: `https://registry.npmjs.org/@opencode/plugin/-/plugin-2.2.0.tgz`
+Tarball: `https://registry.npmjs.org/@opencode/plugin/-/plugin-2.2.3.tgz`
 
 ## Current upstream implementation
 
