@@ -52,5 +52,9 @@
   "engines": {
     "node": ">=22.18"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "gcp-metadata": "9.2.3",
+    "minimatch": "11.0.4"
+  }
 }
