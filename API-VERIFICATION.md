@@ -1,5 +1,26 @@
 # API verification — 2026-11-02
 
+## Combined SDK update — 2026-11-16 (compatibility pending)
+
+The combined updates from PRs #15 and #16 pin both `@opencode/plugin` and
+`@opencode/ai` to **2.2.7**. `npm ls` confirms that the plugin uses the same
+deduplicated AI package and Effect 4.1.0 rather than a second SDK version.
+
+The installed `@opencode/plugin/dist/promise/session.d.ts` still declares all
+six registered hooks: `context`, `generate`, `title`, `compaction`,
+`http.request`, and `experimental.ws.handshake`. Their callback shapes produce
+no type errors in `src/index.ts`.
+
+However, `@opencode/ai/dist/schema/messages.d.ts` now declares `Message` as a
+union of role-specific message classes and a schema with factory methods,
+not the constructor used in `src/guard.ts:59`. Both `npm run check` and
+`npm test` fail at `src/guard.ts:49` and `src/guard.ts:59`; the test suite does
+not execute because compilation fails. Combining dependency versions alone
+does not establish SDK compatibility. A follow-up message-construction
+migration and passing tests are required before merging this update.
+
+The evidence below describes the earlier verification, not SDK 2.2.7.
+
 ## Published package
 
 `npm view @opencode/plugin version` returned **2.2.3**. Downloaded the published tarball and installed that exact SDK; package-lock pins the dependency graph. The implementation compiles against its declarations without an invented hook shim.
