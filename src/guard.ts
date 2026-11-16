@@ -56,7 +56,7 @@ export class Guard {
         }
         return this.json(part) as typeof part;
       });
-      return new Message({ ...(this.json(m) as Message), content });
+      return Message.make({ ...(this.json(m) as Message), content });
     });
   }
   private validate(messages: SessionRequest['messages']): void {

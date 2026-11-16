@@ -1,6 +1,6 @@
 # API verification — 2026-11-02
 
-## Combined SDK update — 2026-11-16 (compatibility pending)
+## Combined SDK update — 2026-11-16
 
 The combined updates from PRs #15 and #16 pin both `@opencode/plugin` and
 `@opencode/ai` to **2.2.7**. `npm ls` confirms that the plugin uses the same
@@ -11,13 +11,19 @@ six registered hooks: `context`, `generate`, `title`, `compaction`,
 `http.request`, and `experimental.ws.handshake`. Their callback shapes produce
 no type errors in `src/index.ts`.
 
-However, `@opencode/ai/dist/schema/messages.d.ts` now declares `Message` as a
+`@opencode/ai/dist/schema/messages.d.ts` now declares `Message` as a
 union of role-specific message classes and a schema with factory methods,
-not the constructor used in `src/guard.ts:59`. Both `npm run check` and
-`npm test` fail at `src/guard.ts:49` and `src/guard.ts:59`; the test suite does
-not execute because compilation fails. Combining dependency versions alone
-does not establish SDK compatibility. A follow-up message-construction
-migration and passing tests are required before merging this update.
+not the former constructor. `src/guard.ts` uses `Message.make` after the
+existing validation and redaction steps. The installed `messages.js` factory
+constructs the appropriate role-specific class, preserving message IDs and
+provider metadata. Constructor failures still become the fixed `GuardError`,
+before the draft is mutated.
+
+`npm run check` and `npm test` pass against the installed SDK. Regression
+tests cover all four message roles, class identity, IDs, metadata redaction,
+input immutability, and atomic rejection of invalid role-specific content.
+This remains a compiled-plugin/mock-host test, not a server/provider
+integration verification.
 
 The evidence below describes the earlier verification, not SDK 2.2.7.
 
