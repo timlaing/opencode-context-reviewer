@@ -41,6 +41,34 @@ test('automatic reduction preserves complete recent tool exchanges and supplies 
   assert.equal(e.messages[2].content[0].id,'c5'); assert.equal(e.messages[3].content[0].id,'c5');
   assert.ok(g.estimate(e)<3000);
 });
+test('SDK message factories preserve roles, classes, IDs and redacted metadata without mutating input', () => {
+  const messages = [
+    Message.make({role:'system',id:'system-id',content:secret}),
+    Message.make({role:'user',id:'user-id',content:secret}),
+    Message.make({role:'assistant',id:'assistant-id',providerMetadata:{test:{note:secret}},
+      content:[{type:'tool-call',id:'call-id',name:'read',input:{note:secret}}]}),
+    Message.make({...Message.tool({id:'call-id',name:'read',result:secret}),id:'tool-id'}),
+  ];
+  const original = JSON.stringify(messages);
+  const e = draft(messages);
+  new Guard().transform(e);
+  assert.equal(JSON.stringify(messages),original);
+  assert.ok(!JSON.stringify(e).includes(secret));
+  for(const [i,m] of e.messages.entries()) {
+    assert.equal(m.role,messages[i].role);
+    assert.equal(m.id,messages[i].id);
+    assert.equal(Object.getPrototypeOf(m),Object.getPrototypeOf(messages[i]));
+    assert.notEqual(m,messages[i]);
+  }
+  assert.match(e.messages[2].providerMetadata.test.note,/^\[REDACTED_/);
+  assert.equal(e.messages[2].content[0].id,e.messages[3].content[0].id);
+});
+test('invalid role-specific message content fails atomically with the fixed guard error', () => {
+  const e = draft([{role:'user',content:[{type:'tool-call',id:'call-id',name:'read',input:{note:secret}}]}]);
+  const original = JSON.stringify(e);
+  assert.throws(()=>new Guard().transform(e),/blocked request/);
+  assert.equal(JSON.stringify(e),original);
+});
 test('cut expands backward for tool results crossing a user boundary', () => {
   const g = new Guard({thresholdTokens:2000,targetTokens:1800,recentExchanges:1,summaryChars:100});
   const e = draft([Message.user('x'.repeat(2200)),Message.assistant('done'),Message.user('start'),
